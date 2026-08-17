@@ -32,11 +32,14 @@
       "type": "object",
       "required": ["watches"],
       "properties": {
-        "behavior": {
+        "policy": {
           "type": "object",
           "properties": {
-            "cascadeDeletionPolicy": {
+            "cascadeDeletion": {
               "enum": ["Delete", "Retain"]
+            },
+            "existingTarget": {
+              "enum": ["Preserve", "Overwrite"]
             }
           },
           "additionalProperties": false

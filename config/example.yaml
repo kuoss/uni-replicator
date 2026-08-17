@@ -1,5 +1,6 @@
-behavior:
-  cascadeDeletionPolicy: Delete
+policy:
+  cascadeDeletion: Delete
+  existingTarget: Preserve
 
 watches:
   - apiVersion: v1

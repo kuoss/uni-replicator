@@ -9,7 +9,6 @@ Install a published chart from GitHub Container Registry:
 ```bash
 helm install uni-replicator \
   oci://ghcr.io/kuoss/charts/uni-replicator \
-  --version 0.1.0 \
   --namespace uni-replicator \
   --create-namespace
 ```
@@ -20,8 +19,9 @@ The `config` value is rendered to `/etc/uni-replicator/config.yaml` in the contr
 
 ```yaml
 config:
-  behavior:
-    cascadeDeletionPolicy: Delete
+  policy:
+    cascadeDeletion: Delete
+    existingTarget: Preserve
 
   watches:
     - apiVersion: v1
@@ -36,19 +36,23 @@ config:
 
 Install CRDs before configuring their resources. The controller exits during startup if an API version or resource does not exist or if required permissions are missing.
 
-`config.behavior.cascadeDeletionPolicy` controls what happens when a source is deleted:
+`config.policy.cascadeDeletion` controls what happens when a source is deleted:
 
 - `Delete` removes its managed replicas and is the default.
 - `Retain` preserves its replicas, removes controller metadata and the replication annotation, and leaves them as unmanaged objects.
 
-This policy does not affect destination removal from `replicate-to`, which always deletes the corresponding replica. A destination deleted directly is always recreated.
+This policy does not affect target removal from `replicate-to`, which always deletes the corresponding replica. A target deleted directly is always recreated.
+
+`config.policy.existingTarget` controls what happens when a target already contains an object with the source object's name:
+
+- `Preserve` leaves objects not managed by the same source untouched and is the default.
+- `Overwrite` takes over the object with server-side apply and forces ownership of conflicting fields.
 
 Apply custom values with:
 
 ```bash
 helm upgrade --install uni-replicator \
   oci://ghcr.io/kuoss/charts/uni-replicator \
-  --version 0.1.0 \
   --namespace uni-replicator \
   --create-namespace \
   --values values.yaml
@@ -84,7 +88,8 @@ The external identity must have all required permissions across namespaces.
 | `serviceAccount.name` | generated | Existing or custom ServiceAccount name |
 | `serviceAccount.annotations` | `{}` | ServiceAccount annotations |
 | `rbac.create` | `true` | Create ClusterRole and ClusterRoleBinding |
-| `config.behavior.cascadeDeletionPolicy` | `Delete` | Delete or retain replicas when their source is deleted |
+| `config.policy.cascadeDeletion` | `Delete` | Delete or retain replicas when their source is deleted |
+| `config.policy.existingTarget` | `Preserve` | Preserve or overwrite an existing target object |
 | `config.watches` | `v1/secrets,configmaps` | API versions and resources to replicate |
 | `controller.workers` | `2` | Reconciliation worker count |
 | `controller.resyncPeriod` | `10m` | Informer resync period |

@@ -32,7 +32,7 @@ const (
 	SourceHashAnnotation      = "replicator.kuoss.github.io/source-hash"
 	FieldManager              = "uni-replicator"
 	sourceIndexName           = "uni-replicator-source"
-	destinationIndexName      = "uni-replicator-destination"
+	targetIndexName           = "uni-replicator-target"
 	maxRetries                = 10
 )
 
@@ -40,6 +40,7 @@ type Resource struct {
 	GVR                   schema.GroupVersionResource
 	GVK                   schema.GroupVersionKind
 	CascadeDeletionPolicy CascadeDeletionPolicy
+	ExistingTargetPolicy  ExistingTargetPolicy
 }
 
 type CascadeDeletionPolicy string
@@ -47,6 +48,13 @@ type CascadeDeletionPolicy string
 const (
 	CascadeDeletionDelete CascadeDeletionPolicy = "Delete"
 	CascadeDeletionRetain CascadeDeletionPolicy = "Retain"
+)
+
+type ExistingTargetPolicy string
+
+const (
+	ExistingTargetPreserve  ExistingTargetPolicy = "Preserve"
+	ExistingTargetOverwrite ExistingTargetPolicy = "Overwrite"
 )
 
 type key struct {
@@ -93,6 +101,12 @@ func New(client dynamic.Interface, resources []Resource, resync time.Duration) (
 		if resource.CascadeDeletionPolicy != CascadeDeletionDelete && resource.CascadeDeletionPolicy != CascadeDeletionRetain {
 			return nil, fmt.Errorf("resource %s has invalid cascade deletion policy %q", resource.GVR, resource.CascadeDeletionPolicy)
 		}
+		if resource.ExistingTargetPolicy == "" {
+			resource.ExistingTargetPolicy = ExistingTargetPreserve
+		}
+		if resource.ExistingTargetPolicy != ExistingTargetPreserve && resource.ExistingTargetPolicy != ExistingTargetOverwrite {
+			return nil, fmt.Errorf("resource %s has invalid existing target policy %q", resource.GVR, resource.ExistingTargetPolicy)
+		}
 		if _, exists := c.resources[resource.GVR]; exists {
 			return nil, fmt.Errorf("resource %s is configured more than once", resource.GVR)
 		}
@@ -103,8 +117,8 @@ func New(client dynamic.Interface, resources []Resource, resync time.Duration) (
 			return nil, fmt.Errorf("set watch error handler for %s: %w", resource.GVR, err)
 		}
 		if err := informer.AddIndexers(cache.Indexers{
-			sourceIndexName:      sourceIndex,
-			destinationIndexName: destinationIndex,
+			sourceIndexName: sourceIndex,
+			targetIndexName: targetIndex,
 		}); err != nil {
 			return nil, fmt.Errorf("add informer indexes for %s: %w", resource.GVR, err)
 		}
@@ -181,7 +195,7 @@ func (c *Controller) eventHandler(gvr schema.GroupVersionResource) cache.Resourc
 		}
 		c.enqueueObject(gvr, obj)
 		if deleted && !isManaged(obj) {
-			c.enqueueSourcesForDestination(gvr, obj.GetNamespace(), obj.GetName())
+			c.enqueueSourcesForTarget(gvr, obj.GetNamespace(), obj.GetName())
 		}
 	}
 	return cache.ResourceEventHandlerFuncs{
@@ -212,15 +226,15 @@ func (c *Controller) enqueueObject(gvr schema.GroupVersionResource, obj *unstruc
 	c.queue.Add(key{GVR: gvr, Namespace: obj.GetNamespace(), Name: obj.GetName()})
 }
 
-func (c *Controller) enqueueSourcesForDestination(gvr schema.GroupVersionResource, namespace, name string) {
+func (c *Controller) enqueueSourcesForTarget(gvr schema.GroupVersionResource, namespace, name string) {
 	resource, ok := c.resources[gvr]
 	if !ok {
-		slog.Error("could not find sources for unconfigured destination", "resource", gvr, "namespace", namespace, "name", name)
+		slog.Error("could not find sources for unconfigured target", "resource", gvr, "namespace", namespace, "name", name)
 		return
 	}
-	values, err := resource.informer.GetIndexer().ByIndex(destinationIndexName, sourceIdentity(namespace, name))
+	values, err := resource.informer.GetIndexer().ByIndex(targetIndexName, sourceIdentity(namespace, name))
 	if err != nil {
-		slog.Error("could not find sources for destination", "error", err, "resource", gvr, "namespace", namespace, "name", name)
+		slog.Error("could not find sources for target", "error", err, "resource", gvr, "namespace", namespace, "name", name)
 		return
 	}
 	for _, value := range values {
@@ -266,12 +280,12 @@ func (c *Controller) reconcile(ctx context.Context, k key) error {
 		return nil
 	}
 
-	destinations := parseDestinations(source.GetAnnotations()[ReplicateToAnnotation], source.GetNamespace())
+	targets := parseTargets(source.GetAnnotations()[ReplicateToAnnotation], source.GetNamespace())
 	var reconcileErrors []error
-	if err := c.deleteReplicas(ctx, resource, k, destinations); err != nil {
+	if err := c.deleteReplicas(ctx, resource, k, targets); err != nil {
 		reconcileErrors = append(reconcileErrors, err)
 	}
-	for namespace := range destinations {
+	for namespace := range targets {
 		if err := c.applyReplica(ctx, resource, source, namespace); err != nil {
 			reconcileErrors = append(reconcileErrors, fmt.Errorf("sync replica %s/%s: %w", namespace, source.GetName(), err))
 		}
@@ -356,16 +370,16 @@ func (c *Controller) applyReplica(ctx context.Context, resource *watchedResource
 	}
 	existing, err := client.Get(ctx, source.GetName(), metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("get destination object: %w", err)
+		return fmt.Errorf("get target object: %w", err)
 	}
 	if err == nil {
-		if !isManaged(existing) {
-			slog.ErrorContext(ctx, "destination object exists and is not managed; refusing takeover", "resource", resource.GVR, "namespace", namespace, "name", source.GetName())
+		if !isManaged(existing) && resource.ExistingTargetPolicy == ExistingTargetPreserve {
+			slog.ErrorContext(ctx, "target object exists and is not managed; refusing takeover", "resource", resource.GVR, "namespace", namespace, "name", source.GetName())
 			return nil
 		}
 		annotations := existing.GetAnnotations()
-		if annotations[SourceNamespaceAnnotation] != source.GetNamespace() {
-			slog.ErrorContext(ctx, "destination object is managed by a different source; refusing takeover", "resource", resource.GVR, "namespace", namespace, "name", source.GetName())
+		if isManaged(existing) && annotations[SourceNamespaceAnnotation] != source.GetNamespace() && resource.ExistingTargetPolicy == ExistingTargetPreserve {
+			slog.ErrorContext(ctx, "target object is managed by a different source; refusing takeover", "resource", resource.GVR, "namespace", namespace, "name", source.GetName())
 			return nil
 		}
 		if annotations[SourceHashAnnotation] == desired.GetAnnotations()[SourceHashAnnotation] && objectContains(existing.Object, desired.Object) {
@@ -377,7 +391,7 @@ func (c *Controller) applyReplica(ctx context.Context, resource *watchedResource
 	if err != nil {
 		return fmt.Errorf("marshal apply object: %w", err)
 	}
-	force := false
+	force := resource.ExistingTargetPolicy == ExistingTargetOverwrite
 	_, err = client.Patch(ctx, source.GetName(), types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: FieldManager, Force: &force})
 	if err != nil {
 		return fmt.Errorf("server-side apply: %w", err)
@@ -456,7 +470,7 @@ func objectContains(actual, desired interface{}) bool {
 	}
 }
 
-func parseDestinations(value, sourceNamespace string) map[string]struct{} {
+func parseTargets(value, sourceNamespace string) map[string]struct{} {
 	result := make(map[string]struct{})
 	for _, item := range strings.Split(value, ",") {
 		namespace := strings.TrimSpace(item)
@@ -487,14 +501,14 @@ func sourceIndex(value interface{}) ([]string, error) {
 	return []string{sourceIdentity(namespace, obj.GetName())}, nil
 }
 
-func destinationIndex(value interface{}) ([]string, error) {
+func targetIndex(value interface{}) ([]string, error) {
 	obj, ok := value.(*unstructured.Unstructured)
 	if !ok || isManaged(obj) {
 		return nil, nil
 	}
-	destinations := parseDestinations(obj.GetAnnotations()[ReplicateToAnnotation], obj.GetNamespace())
-	result := make([]string, 0, len(destinations))
-	for namespace := range destinations {
+	targets := parseTargets(obj.GetAnnotations()[ReplicateToAnnotation], obj.GetNamespace())
+	result := make([]string, 0, len(targets))
+	for namespace := range targets {
 		result = append(result, sourceIdentity(namespace, obj.GetName()))
 	}
 	return result, nil

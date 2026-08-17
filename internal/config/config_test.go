@@ -20,8 +20,11 @@ func TestLoad(t *testing.T) {
 	if len(cfg.Watches) != 1 || cfg.Watches[0].APIVersion != "k8s.nginx.org/v1" || len(cfg.Watches[0].Resources) != 1 || cfg.Watches[0].Resources[0] != "policies" {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
-	if cfg.Behavior.CascadeDeletionPolicy != CascadeDeletionDelete {
-		t.Fatalf("cascadeDeletionPolicy = %q, want default %q", cfg.Behavior.CascadeDeletionPolicy, CascadeDeletionDelete)
+	if cfg.Policy.CascadeDeletion != CascadeDeletionDelete {
+		t.Fatalf("cascadeDeletion = %q, want default %q", cfg.Policy.CascadeDeletion, CascadeDeletionDelete)
+	}
+	if cfg.Policy.ExistingTarget != ExistingTargetPreserve {
+		t.Fatalf("existingTarget = %q, want default %q", cfg.Policy.ExistingTarget, ExistingTargetPreserve)
 	}
 }
 
@@ -35,9 +38,9 @@ func TestLoadRejectsUnknownFields(t *testing.T) {
 	}
 }
 
-func TestLoadRetainCascadeDeletionPolicy(t *testing.T) {
+func TestLoadPolicies(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	data := []byte("behavior:\n  cascadeDeletionPolicy: Retain\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n")
+	data := []byte("policy:\n  cascadeDeletion: Retain\n  existingTarget: Overwrite\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +48,11 @@ func TestLoadRetainCascadeDeletionPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Behavior.CascadeDeletionPolicy != CascadeDeletionRetain {
-		t.Fatalf("cascadeDeletionPolicy = %q, want %q", cfg.Behavior.CascadeDeletionPolicy, CascadeDeletionRetain)
+	if cfg.Policy.CascadeDeletion != CascadeDeletionRetain {
+		t.Fatalf("cascadeDeletion = %q, want %q", cfg.Policy.CascadeDeletion, CascadeDeletionRetain)
+	}
+	if cfg.Policy.ExistingTarget != ExistingTargetOverwrite {
+		t.Fatalf("existingTarget = %q, want %q", cfg.Policy.ExistingTarget, ExistingTargetOverwrite)
 	}
 }
 
@@ -60,7 +66,9 @@ func TestLoadRejectsInvalidWatch(t *testing.T) {
 		{name: "empty apiVersion", data: "watches:\n  - apiVersion: '  '\n    resources: [secrets]\n", want: "apiVersion must not be empty"},
 		{name: "no resources", data: "watches:\n  - apiVersion: v1\n    resources: []\n", want: "at least one resource"},
 		{name: "empty resource", data: "watches:\n  - apiVersion: v1\n    resources: ['  ']\n", want: "resources[0] must not be empty"},
-		{name: "invalid cascade deletion", data: "behavior:\n  cascadeDeletionPolicy: Keep\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n", want: "cascadeDeletionPolicy must be"},
+		{name: "invalid cascade deletion", data: "policy:\n  cascadeDeletion: Keep\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n", want: "cascadeDeletion must be"},
+		{name: "invalid existing target", data: "policy:\n  existingTarget: Replace\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n", want: "existingTarget must be"},
+		{name: "legacy behavior field", data: "behavior:\n  cascadeDeletionPolicy: Retain\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n", want: "unknown field \"behavior\""},
 	}
 
 	for _, tt := range tests {
