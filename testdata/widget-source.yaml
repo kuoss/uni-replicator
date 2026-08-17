@@ -1,0 +1,9 @@
+apiVersion: replication-test.kuoss.io/v1
+kind: Widget
+metadata:
+  name: generic-example
+  namespace: platform
+  annotations:
+    replicator.kuoss.github.io/replicate-to: app-a,app-b
+spec:
+  message: replicated without a Go type

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: uni-replicator
+description: Replicate arbitrary namespaced Kubernetes resources across namespaces
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/kuoss/uni-replicator
+sources:
+  - https://github.com/kuoss/uni-replicator
+annotations:
+  org.opencontainers.image.source: https://github.com/kuoss/uni-replicator

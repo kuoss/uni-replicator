@@ -1,0 +1,10 @@
+uni-replicator is running in namespace {{ .Release.Namespace }}.
+
+Annotate a source object with:
+
+  replicator.kuoss.github.io/replicate-to: "namespace-a,namespace-b"
+
+Configured watches:
+{{- range .Values.config.watches }}
+  - {{ .apiVersion }}: {{ join ", " .resources }}
+{{- end }}

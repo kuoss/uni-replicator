@@ -1,0 +1,68 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kuoss/uni-replicator
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  create: true
+
+# Rendered to /etc/uni-replicator/config.yaml in the controller container.
+# ClusterRole rules are generated automatically from these watches.
+config:
+  # Delete removes managed replicas with their source. Retain preserves them
+  # as unmanaged objects and removes controller metadata.
+  behavior:
+    cascadeDeletionPolicy: Delete
+
+  watches:
+    - apiVersion: v1
+      resources:
+        - secrets
+        - configmaps
+
+    # Example: watch resources provided by a CRD.
+    # Ensure the CRD is installed before starting uni-replicator.
+    # - apiVersion: k8s.nginx.org/v1
+    #   resources:
+    #     - policies
+
+controller:
+  workers: 2
+  resyncPeriod: 10m
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    cpu: 80m
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
