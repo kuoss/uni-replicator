@@ -1,0 +1,8 @@
+behavior:
+  cascadeDeletionPolicy: Delete
+
+watches:
+  - apiVersion: v1
+    resources: ["configmaps", "secrets"]
+  - apiVersion: k8s.nginx.org/v1
+    resources: ["policies"]

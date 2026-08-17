@@ -1,0 +1,78 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestLoad(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	data := []byte("watches:\n  - apiVersion: k8s.nginx.org/v1\n    resources:\n      - policies\n")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Watches) != 1 || cfg.Watches[0].APIVersion != "k8s.nginx.org/v1" || len(cfg.Watches[0].Resources) != 1 || cfg.Watches[0].Resources[0] != "policies" {
+		t.Fatalf("unexpected config: %#v", cfg)
+	}
+	if cfg.Behavior.CascadeDeletionPolicy != CascadeDeletionDelete {
+		t.Fatalf("cascadeDeletionPolicy = %q, want default %q", cfg.Behavior.CascadeDeletionPolicy, CascadeDeletionDelete)
+	}
+}
+
+func TestLoadRejectsUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("watches: []\nunknown: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() succeeded with an unknown field")
+	}
+}
+
+func TestLoadRetainCascadeDeletionPolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	data := []byte("behavior:\n  cascadeDeletionPolicy: Retain\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Behavior.CascadeDeletionPolicy != CascadeDeletionRetain {
+		t.Fatalf("cascadeDeletionPolicy = %q, want %q", cfg.Behavior.CascadeDeletionPolicy, CascadeDeletionRetain)
+	}
+}
+
+func TestLoadRejectsInvalidWatch(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want string
+	}{
+		{name: "no watches", data: "watches: []\n", want: "at least one watch"},
+		{name: "empty apiVersion", data: "watches:\n  - apiVersion: '  '\n    resources: [secrets]\n", want: "apiVersion must not be empty"},
+		{name: "no resources", data: "watches:\n  - apiVersion: v1\n    resources: []\n", want: "at least one resource"},
+		{name: "empty resource", data: "watches:\n  - apiVersion: v1\n    resources: ['  ']\n", want: "resources[0] must not be empty"},
+		{name: "invalid cascade deletion", data: "behavior:\n  cascadeDeletionPolicy: Keep\nwatches:\n  - apiVersion: v1\n    resources: [secrets]\n", want: "cascadeDeletionPolicy must be"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(path)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Load() error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
