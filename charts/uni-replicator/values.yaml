@@ -22,8 +22,10 @@ rbac:
 config:
   # Delete removes managed replicas with their source. Retain preserves them
   # as unmanaged objects and removes controller metadata.
-  behavior:
-    cascadeDeletionPolicy: Delete
+  policy:
+    cascadeDeletion: Delete
+    # Preserve leaves pre-existing targets untouched. Overwrite takes them over.
+    existingTarget: Preserve
 
   watches:
     - apiVersion: v1

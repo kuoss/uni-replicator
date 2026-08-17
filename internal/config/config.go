@@ -9,17 +9,20 @@ import (
 )
 
 type Config struct {
-	Watches  []Watch  `json:"watches"`
-	Behavior Behavior `json:"behavior,omitempty"`
+	Watches []Watch `json:"watches"`
+	Policy  Policy  `json:"policy,omitempty"`
 }
 
 const (
-	CascadeDeletionDelete = "Delete"
-	CascadeDeletionRetain = "Retain"
+	CascadeDeletionDelete   = "Delete"
+	CascadeDeletionRetain   = "Retain"
+	ExistingTargetPreserve  = "Preserve"
+	ExistingTargetOverwrite = "Overwrite"
 )
 
-type Behavior struct {
-	CascadeDeletionPolicy string `json:"cascadeDeletionPolicy,omitempty"`
+type Policy struct {
+	CascadeDeletion string `json:"cascadeDeletion,omitempty"`
+	ExistingTarget  string `json:"existingTarget,omitempty"`
 }
 
 type Watch struct {
@@ -39,12 +42,19 @@ func Load(path string) (*Config, error) {
 	if len(cfg.Watches) == 0 {
 		return nil, fmt.Errorf("config must contain at least one watch")
 	}
-	cfg.Behavior.CascadeDeletionPolicy = strings.TrimSpace(cfg.Behavior.CascadeDeletionPolicy)
-	if cfg.Behavior.CascadeDeletionPolicy == "" {
-		cfg.Behavior.CascadeDeletionPolicy = CascadeDeletionDelete
+	cfg.Policy.CascadeDeletion = strings.TrimSpace(cfg.Policy.CascadeDeletion)
+	if cfg.Policy.CascadeDeletion == "" {
+		cfg.Policy.CascadeDeletion = CascadeDeletionDelete
 	}
-	if cfg.Behavior.CascadeDeletionPolicy != CascadeDeletionDelete && cfg.Behavior.CascadeDeletionPolicy != CascadeDeletionRetain {
-		return nil, fmt.Errorf("behavior.cascadeDeletionPolicy must be %q or %q", CascadeDeletionDelete, CascadeDeletionRetain)
+	if cfg.Policy.CascadeDeletion != CascadeDeletionDelete && cfg.Policy.CascadeDeletion != CascadeDeletionRetain {
+		return nil, fmt.Errorf("policy.cascadeDeletion must be %q or %q", CascadeDeletionDelete, CascadeDeletionRetain)
+	}
+	cfg.Policy.ExistingTarget = strings.TrimSpace(cfg.Policy.ExistingTarget)
+	if cfg.Policy.ExistingTarget == "" {
+		cfg.Policy.ExistingTarget = ExistingTargetPreserve
+	}
+	if cfg.Policy.ExistingTarget != ExistingTargetPreserve && cfg.Policy.ExistingTarget != ExistingTargetOverwrite {
+		return nil, fmt.Errorf("policy.existingTarget must be %q or %q", ExistingTargetPreserve, ExistingTargetOverwrite)
 	}
 	for i := range cfg.Watches {
 		watch := &cfg.Watches[i]

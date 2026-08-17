@@ -62,7 +62,7 @@ func TestControllerReplicatesArbitraryCRDAndMaintainsLifecycle(t *testing.T) {
 		t.Fatalf("replica value = %q, want one", got)
 	}
 	if got := nestedValue(t, eventuallyGet(t, client, "app-b", "shared")); got != "do-not-touch" {
-		t.Fatalf("unmanaged destination was overwritten: %q", got)
+		t.Fatalf("unmanaged target was overwritten: %q", got)
 	}
 
 	assertServerSideApply(t, client)
@@ -96,14 +96,14 @@ func TestControllerReplicatesArbitraryCRDAndMaintainsLifecycle(t *testing.T) {
 	updated = eventuallyGet(t, client, "platform", "shared").DeepCopy()
 	updated.SetAnnotations(map[string]string{})
 	if _, err := client.Resource(testGVR).Namespace("platform").Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
-		t.Fatalf("remove destination: %v", err)
+		t.Fatalf("remove target: %v", err)
 	}
 	eventuallyNotFound(t, client, "app-a", "shared")
 
 	updated = eventuallyGet(t, client, "platform", "shared").DeepCopy()
 	updated.SetAnnotations(map[string]string{ReplicateToAnnotation: "app-a"})
 	if _, err := client.Resource(testGVR).Namespace("platform").Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
-		t.Fatalf("restore destination: %v", err)
+		t.Fatalf("restore target: %v", err)
 	}
 	eventuallyGet(t, client, "app-a", "shared")
 	if err := client.Resource(testGVR).Namespace("platform").Delete(ctx, "shared", metav1.DeleteOptions{}); err != nil {
@@ -112,7 +112,7 @@ func TestControllerReplicatesArbitraryCRDAndMaintainsLifecycle(t *testing.T) {
 	eventuallyNotFound(t, client, "app-a", "shared")
 }
 
-func TestBlockingDestinationDeletionImmediatelyReconcilesSource(t *testing.T) {
+func TestBlockingTargetDeletionImmediatelyReconcilesSource(t *testing.T) {
 	ctx := context.Background()
 	source := widget("platform", "shared", "source-value")
 	source.SetAnnotations(map[string]string{ReplicateToAnnotation: "app-b"})
@@ -131,11 +131,11 @@ func TestBlockingDestinationDeletionImmediatelyReconcilesSource(t *testing.T) {
 		t.Fatalf("initial reconcile: %v", err)
 	}
 	if got := nestedValue(t, eventuallyGet(t, client, "app-b", "shared")); got != "unmanaged-value" {
-		t.Fatalf("blocking destination was overwritten: %q", got)
+		t.Fatalf("blocking target was overwritten: %q", got)
 	}
 
 	if err := client.Resource(testGVR).Namespace("app-b").Delete(ctx, "shared", metav1.DeleteOptions{}); err != nil {
-		t.Fatalf("delete blocking destination: %v", err)
+		t.Fatalf("delete blocking target: %v", err)
 	}
 	c.eventHandler(testGVR).OnDelete(blocker)
 	if got := c.queue.Len(); got != 2 {
@@ -149,6 +149,38 @@ func TestBlockingDestinationDeletionImmediatelyReconcilesSource(t *testing.T) {
 	if got := nestedValue(t, replica); got != "source-value" {
 		t.Fatalf("replica value = %q, want source value", got)
 	}
+}
+
+func TestOverwritePolicyTakesOverExistingTarget(t *testing.T) {
+	ctx := context.Background()
+	source := widget("platform", "shared", "source-value")
+	source.SetAnnotations(map[string]string{ReplicateToAnnotation: "app-b"})
+	existing := widget("app-b", "shared", "existing-value")
+	client := newTestClient(existing)
+	c, err := New(client, []Resource{{
+		GVR:                  testGVR,
+		GVK:                  testGVK,
+		ExistingTargetPolicy: ExistingTargetOverwrite,
+	}}, 0)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer c.queue.ShutDown()
+	if err := c.resources[testGVR].informer.GetIndexer().Add(source); err != nil {
+		t.Fatalf("add source to informer index: %v", err)
+	}
+
+	if err := c.reconcile(ctx, key{GVR: testGVR, Namespace: source.GetNamespace(), Name: source.GetName()}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	replica := eventuallyGet(t, client, "app-b", "shared")
+	if got := nestedValue(t, replica); got != "source-value" {
+		t.Fatalf("replica value = %q, want source value", got)
+	}
+	if !isManaged(replica) || replica.GetAnnotations()[SourceNamespaceAnnotation] != "platform" {
+		t.Fatalf("replica was not taken over: labels=%v annotations=%v", replica.GetLabels(), replica.GetAnnotations())
+	}
+	assertServerSideApply(t, client)
 }
 
 func TestRetainPolicyOrphansReplicasWhenSourceIsDeleted(t *testing.T) {
@@ -200,7 +232,7 @@ func TestBuildReplicaStripsLifecycleFields(t *testing.T) {
 	source.SetFinalizers([]string{"finalizer"})
 	source.Object["status"] = map[string]interface{}{"ok": true}
 
-	replica, err := buildReplica(source, testGVK, "destination")
+	replica, err := buildReplica(source, testGVK, "target")
 	if err != nil {
 		t.Fatalf("buildReplica() error = %v", err)
 	}

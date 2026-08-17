@@ -91,7 +91,8 @@ func run(configPath, kubeconfig, defaultKubeconfig string, resync time.Duration,
 		return err
 	}
 	for i := range mappings {
-		mappings[i].CascadeDeletionPolicy = controller.CascadeDeletionPolicy(cfg.Behavior.CascadeDeletionPolicy)
+		mappings[i].CascadeDeletionPolicy = controller.CascadeDeletionPolicy(cfg.Policy.CascadeDeletion)
+		mappings[i].ExistingTargetPolicy = controller.ExistingTargetPolicy(cfg.Policy.ExistingTarget)
 	}
 	if err := validateResourcePermissions(ctx, authorizationClient.SelfSubjectAccessReviews(), mappings); err != nil {
 		return err
