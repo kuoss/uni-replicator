@@ -44,12 +44,9 @@ watches:
   - apiVersion: k8s.nginx.org/v1
     resources:
       - policies
-  - apiVersion: monitoring.coreos.com/v1
-    resources:
-      - prometheusrules
 ```
 
-Resource names are the plural API resource names reported by Kubernetes discovery, such as `secrets`, `policies`, or `prometheusrules`. All entries must exist at the configured API version and must be namespaced. A missing CRD, resource, or API version and a cluster-scoped resource cause startup to fail clearly. Configuration is read only at startup.
+Resource names are the plural API resource names reported by Kubernetes discovery, such as `secrets` or `policies`. All entries must exist at the configured API version and must be namespaced. A missing CRD, resource, or API version and a cluster-scoped resource cause startup to fail clearly. Configuration is read only at startup.
 
 `behavior.cascadeDeletionPolicy` defaults to `Delete`. `Retain` preserves replicas when their source is deleted, removes their controller-managed metadata, and leaves them as unmanaged objects. Removing a namespace from `replicate-to` still deletes its replica, and directly deleting a destination still causes recreation.
 
@@ -124,7 +121,7 @@ The controller also performs a best-effort check for wildcard resource permissio
 
 ## Release
 
-Pushing a semantic version tag such as `v0.1.0` runs the release workflow. It tests the Go code, lints the chart, publishes multi-architecture controller images to `ghcr.io/kuoss/uni-replicator`, and pushes the versioned chart to `oci://ghcr.io/kuoss/charts/uni-replicator`.
+Pushing a semantic version tag such as `v0.1.0` runs the release workflow. It tests the Go code, lints the chart, publishes the controller image to `ghcr.io/kuoss/uni-replicator`, and pushes the versioned chart to `oci://ghcr.io/kuoss/charts/uni-replicator`.
 
 ```bash
 git tag v0.1.0

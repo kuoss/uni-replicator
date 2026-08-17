@@ -229,15 +229,15 @@ func TestResolveRejectsMissingResource(t *testing.T) {
 func TestResolveDiscoveryErrorIncludesConfiguredResources(t *testing.T) {
 	discovery := &fake.FakeDiscovery{Fake: &clienttesting.Fake{}}
 	watches := []config.Watch{{
-		APIVersion: "monitoring.coreos.com/v1",
-		Resources:  []string{"prometheusrules", "servicemonitors"},
+		APIVersion: "example.io/v1",
+		Resources:  []string{"widgets", "gadgets"},
 	}}
 
 	_, err := resolveResources(discovery, watches)
 	if err == nil {
 		t.Fatal("resolveResources() succeeded for an unavailable apiVersion")
 	}
-	for _, want := range []string{"monitoring.coreos.com/v1", "prometheusrules", "servicemonitors"} {
+	for _, want := range []string{"example.io/v1", "widgets", "gadgets"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
