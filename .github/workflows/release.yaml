@@ -51,12 +51,6 @@ jobs:
       - name: Lint Helm chart
         run: helm lint charts/uni-replicator
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to GHCR for image publishing
         uses: docker/login-action@v3
         with:
@@ -65,18 +59,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.release.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --tag "$IMAGE:$VERSION" \
+            .
+          docker push "$IMAGE:$VERSION"
 
       - name: Log in to GHCR for chart publishing
         shell: bash
