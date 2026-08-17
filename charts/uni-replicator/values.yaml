@@ -46,6 +46,7 @@ podLabels: {}
 
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 65532
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -54,6 +55,7 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
   runAsNonRoot: true
+  runAsUser: 65532
 
 resources:
   requests:
